@@ -1,0 +1,295 @@
+"use client";
+
+import React, { useEffect, useRef, useState, useCallback } from "react";
+
+type VideoSection1Props = {
+  totalFrames?: number;
+  title?: string;
+  description?: string;
+};
+
+export function VideoSection1({
+  totalFrames = 150,
+  title = "SMILE BRIGHT, LIVE CONFIDENT",
+  description = "Advanced Dental Care with a Personal Touch"
+}: VideoSection1Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Array to hold the preloaded images
+  const imagesRef = useRef<(HTMLImageElement | null)[]>([]);
+  const currentFrameRef = useRef(0);
+  const [loadedCount, setLoadedCount] = useState(0);
+  const isComponentMounted = useRef(true);
+  const isIntersecting = useRef(false);
+
+  // Constants
+  const frameExtension = "webp";
+  const framePrefix = "/frames/video_1/frame_";
+
+  // Helper to get formatted frame path
+  const getFramePath = (index: number) => {
+    // Frames are 1-indexed: frame_0001 to frame_0150
+    const frameNum = (index + 1).toString().padStart(4, "0");
+    return `${framePrefix}${frameNum}.${frameExtension}`;
+  };
+
+  // Preload frames incrementally
+  useEffect(() => {
+    isComponentMounted.current = true;
+    imagesRef.current = new Array(totalFrames).fill(null);
+    setLoadedCount(0);
+
+    const preloadImages = async () => {
+      // Load first frame immediately
+      const firstImg = new window.Image();
+      firstImg.src = getFramePath(0);
+      await new Promise((resolve) => {
+        firstImg.onload = () => {
+          if (isComponentMounted.current) {
+            imagesRef.current[0] = firstImg;
+            setLoadedCount(1);
+          }
+          resolve(null);
+        };
+        firstImg.onerror = () => resolve(null);
+      });
+
+      // Initially draw the first frame if canvas is ready
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext("2d");
+        if (ctx) {
+          const parent = canvasRef.current.parentElement;
+          if (parent) {
+            canvasRef.current.width = parent.clientWidth;
+            canvasRef.current.height = parent.clientHeight;
+          }
+          drawCover(ctx, canvasRef.current, firstImg);
+        }
+      }
+
+      // Load remaining frames in chunks to prevent blocking
+      const chunkSize = 15;
+      for (let i = 1; i < totalFrames; i += chunkSize) {
+        if (!isComponentMounted.current) break;
+        
+        const chunk = [];
+        for (let j = i; j < Math.min(i + chunkSize, totalFrames); j++) {
+          chunk.push(
+            new Promise<void>((resolve) => {
+              const img = new window.Image();
+              img.src = getFramePath(j);
+              img.onload = () => {
+                if (isComponentMounted.current) {
+                  imagesRef.current[j] = img;
+                }
+                resolve();
+              };
+              img.onerror = () => resolve();
+            })
+          );
+        }
+        await Promise.all(chunk);
+        if (isComponentMounted.current) {
+          setLoadedCount((prev) => Math.min(prev + chunkSize, totalFrames));
+        }
+      }
+    };
+
+    preloadImages();
+
+    return () => {
+      isComponentMounted.current = false;
+    };
+  }, [totalFrames]);
+
+  // Helper to draw image using object-fit: cover logic
+  const drawCover = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, img: HTMLImageElement) => {
+    if (!img.width || !img.height) return;
+    
+    const imgRatio = img.width / img.height;
+    const canvasRatio = canvas.width / canvas.height;
+    
+    let drawWidth, drawHeight, offsetX, offsetY;
+
+    if (canvasRatio > imgRatio) {
+      drawWidth = canvas.width;
+      drawHeight = canvas.width / imgRatio;
+      offsetX = 0;
+      offsetY = (canvas.height - drawHeight) / 2;
+    } else {
+      drawHeight = canvas.height;
+      drawWidth = canvas.height * imgRatio;
+      offsetX = (canvas.width - drawWidth) / 2;
+      offsetY = 0;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+  };
+
+  // Canvas drawing function
+  const renderFrame = useCallback((frameIndex: number) => {
+    if (!isIntersecting.current) return;
+    
+    if (imagesRef.current[frameIndex] && canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      const img = imagesRef.current[frameIndex]!;
+      const canvas = canvasRef.current;
+      const parent = canvas.parentElement;
+      
+      if (parent && ctx) {
+        // Ensure canvas dimensions match container
+        if (canvas.width !== parent.clientWidth || canvas.height !== parent.clientHeight) {
+          canvas.width = parent.clientWidth;
+          canvas.height = parent.clientHeight;
+        }
+        
+        drawCover(ctx, canvas, img);
+      }
+    }
+  }, []);
+
+  // Intersection Observer for performance
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        isIntersecting.current = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          // Render current frame immediately when coming into view
+          renderFrame(currentFrameRef.current);
+        }
+      });
+    }, { rootMargin: "100% 0px" });
+    
+    observer.observe(containerRef.current);
+    
+    return () => observer.disconnect();
+  }, [renderFrame]);
+
+  // Handle Scroll with requestAnimationFrame
+  useEffect(() => {
+    let animationFrameId: number;
+
+    const handleScroll = () => {
+      if (!isIntersecting.current) return;
+      
+      if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(() => {
+          updateFrame(window.scrollY);
+          animationFrameId = 0;
+        });
+      }
+    };
+
+    const updateFrame = (scrollY: number) => {
+      if (!containerRef.current) return;
+
+      const container = containerRef.current;
+      const rect = container.getBoundingClientRect();
+      
+      const containerTop = rect.top + scrollY; 
+      const containerHeight = container.offsetHeight;
+      const windowHeight = window.innerHeight;
+
+      // Scrollable distance
+      const scrollableDistance = containerHeight - windowHeight;
+      
+      // Calculate progress (0 to 1)
+      let progress = (scrollY - containerTop) / scrollableDistance;
+      progress = Math.max(0, Math.min(1, progress));
+      
+      // Determine frame index
+      const maxFrameIndex = totalFrames - 1;
+      let frameIndex = Math.floor(progress * maxFrameIndex);
+      frameIndex = Math.max(0, Math.min(frameIndex, maxFrameIndex));
+
+      // Draw if changed
+      if (frameIndex !== currentFrameRef.current) {
+        currentFrameRef.current = frameIndex;
+        renderFrame(frameIndex);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    
+    const handleResize = () => {
+      if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(() => {
+          renderFrame(currentFrameRef.current);
+          animationFrameId = 0;
+        });
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    
+    handleScroll();
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [totalFrames, renderFrame]);
+
+  return (
+    <section 
+      ref={containerRef} 
+      className="relative w-full h-[400vh] bg-[#1a1a1a]"
+    >
+      <div className="sticky top-0 w-full h-screen overflow-hidden bg-[#1a1a1a]">
+        
+        {/* Loading State */}
+        {loadedCount === 0 && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#1a1a1a]">
+            <div className="flex flex-col items-center gap-4">
+               <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#CBA135]/20 border-t-[#CBA135]"></div>
+               <p className="text-[#CBA135]/80 font-medium text-sm tracking-widest uppercase">Preparing Experience...</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Canvas for rendering frames */}
+        <canvas 
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+
+        {/* Bottom Gradient Overlay */}
+        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-[#1a1a1a] via-[#1a1a1a]/50 to-transparent z-10 pointer-events-none" />
+
+        {/* Content Overlay */}
+        <div className="absolute inset-0 z-20 flex flex-col justify-end px-6 pb-24 md:px-12 md:pb-32 lg:px-24 pointer-events-none">
+          <div className="max-w-4xl mx-auto w-full text-center flex flex-col items-center">
+            
+            <p className="text-[#CBA135] font-semibold tracking-[0.25em] text-sm md:text-base mb-4 uppercase drop-shadow-md">
+              Golden Dental Clinic
+            </p>
+            
+            <h2 className="text-white font-light text-4xl md:text-5xl lg:text-7xl tracking-tight mb-6 leading-tight drop-shadow-lg">
+              {title}
+            </h2>
+            
+            <p className="text-neutral-300 text-lg md:text-xl font-light max-w-2xl drop-shadow-md">
+              {description}
+            </p>
+            
+          </div>
+        </div>
+
+        {/* Scroll Indicator */}
+        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 flex flex-col items-center opacity-80 animate-pulse">
+          <span className="text-[#CBA135] text-xs tracking-widest mb-3 font-medium">SCROLL TO EXPLORE</span>
+          <div className="w-[1px] h-12 bg-gradient-to-b from-[#CBA135] to-transparent" />
+        </div>
+        
+      </div>
+    </section>
+  );
+}
+
+export default VideoSection1;
