@@ -34,7 +34,7 @@ const treatments = [
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[#0A0A0A] text-neutral-200 font-sans selection:bg-[#CBA135]/30">
+    <main className="relative min-h-screen w-full overflow-x-hidden bg-[#0A0A0A] text-neutral-200 font-sans selection:bg-[#CBA135]/30">
       
       <Navigation />
 

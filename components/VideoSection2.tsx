@@ -63,35 +63,43 @@ export function VideoSection2({
         if (ctx) {
           const parent = canvasRef.current.parentElement;
           if (parent) {
-            canvasRef.current.width = parent.clientWidth;
-            canvasRef.current.height = parent.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            canvasRef.current.width = parent.clientWidth * dpr;
+            canvasRef.current.height = parent.clientHeight * dpr;
           }
-          drawCover(ctx, canvasRef.current, firstImg);
+          drawCover(ctx, canvasRef.current, firstImg, 0.5, 0.5);
         }
       }
 
-      // Load remaining frames in chunks to prevent blocking
-      const chunkSize = 15;
-      for (let i = 1; i < totalFrames; i += chunkSize) {
+      // Check if mobile to implement frame sampling
+      const isMobile = window.innerWidth < 768;
+      const frameSkip = isMobile ? 3 : 1;
+      
+      // Load remaining frames in chunks
+      const chunkSize = isMobile ? 5 : 15;
+      for (let i = frameSkip; i < totalFrames; i += (chunkSize * frameSkip)) {
         if (!isComponentMounted.current) break;
         
         const chunk = [];
-        for (let j = i; j < Math.min(i + chunkSize, totalFrames); j++) {
+        for (let j = 0; j < chunkSize; j++) {
+          const frameIndex = i + (j * frameSkip);
+          if (frameIndex >= totalFrames) break;
+          
           chunk.push(
             new Promise<void>((resolve) => {
               const img = new window.Image();
-              img.src = getFramePath(j);
+              img.src = getFramePath(frameIndex);
               img.onload = () => {
                 if (isComponentMounted.current) {
-                  imagesRef.current[j] = img;
+                  imagesRef.current[frameIndex] = img;
                 }
                 resolve();
               };
               img.onerror = () => {
                 if (isComponentMounted.current) {
-                  console.warn(`VideoSection2: Failed to load frame ${j}`);
+                  console.warn(`VideoSection2: Failed to load frame ${frameIndex}`);
                 }
-                resolve(); // Retain animation by allowing to proceed
+                resolve();
               };
             })
           );
@@ -111,7 +119,7 @@ export function VideoSection2({
   }, [totalFrames]);
 
   // Helper to draw image using object-fit: cover logic
-  const drawCover = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, img: HTMLImageElement) => {
+  const drawCover = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, img: HTMLImageElement, focusX = 0.5, focusY = 0.5) => {
     if (!img.width || !img.height) return;
     
     const imgRatio = img.width / img.height;
@@ -123,11 +131,11 @@ export function VideoSection2({
       drawWidth = canvas.width;
       drawHeight = canvas.width / imgRatio;
       offsetX = 0;
-      offsetY = (canvas.height - drawHeight) / 2;
+      offsetY = (canvas.height - drawHeight) * focusY;
     } else {
       drawHeight = canvas.height;
       drawWidth = canvas.height * imgRatio;
-      offsetX = (canvas.width - drawWidth) / 2;
+      offsetX = (canvas.width - drawWidth) * focusX;
       offsetY = 0;
     }
 
@@ -156,13 +164,17 @@ export function VideoSection2({
       const parent = canvas.parentElement;
       
       if (parent && ctx) {
+        const dpr = window.devicePixelRatio || 1;
+        const targetWidth = parent.clientWidth * dpr;
+        const targetHeight = parent.clientHeight * dpr;
+        
         // Ensure canvas dimensions match container dynamically
-        if (canvas.width !== parent.clientWidth || canvas.height !== parent.clientHeight) {
-          canvas.width = parent.clientWidth;
-          canvas.height = parent.clientHeight;
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
         }
         
-        drawCover(ctx, canvas, validImg);
+        drawCover(ctx, canvas, validImg, 0.5, 0.5);
       }
     }
   }, []);
@@ -276,22 +288,22 @@ export function VideoSection2({
         <div className="absolute left-0 bottom-0 w-full md:w-2/3 h-1/2 bg-gradient-to-tr from-[#0A0A0A]/90 via-[#0A0A0A]/40 to-transparent z-10 pointer-events-none" />
 
         {/* Overlay Content - Lower Left */}
-        <div className="absolute inset-0 z-20 flex flex-col justify-end p-6 pb-[10%] md:p-[6%] md:pb-[12%] lg:p-[8%] lg:pb-[10%] pointer-events-none">
-          <div className="max-w-[430px] w-full text-left flex flex-col items-start pointer-events-auto">
+        <div className="absolute inset-0 z-20 flex flex-col justify-end p-4 pb-20 sm:p-6 sm:pb-[10%] md:p-[6%] md:pb-[12%] lg:p-[8%] lg:pb-[10%] pointer-events-none">
+          <div className="max-w-[280px] sm:max-w-[320px] md:max-w-[430px] w-full text-left flex flex-col items-start pointer-events-auto">
             
-            <p className="text-[#CBA135] font-semibold tracking-[0.25em] text-[12px] md:text-[14px] mb-3 uppercase drop-shadow-md">
+            <p className="text-[#CBA135] font-semibold tracking-[0.25em] text-[10px] sm:text-[12px] md:text-[14px] mb-2 sm:mb-3 uppercase drop-shadow-md">
               {title}
             </p>
             
-            <h2 className="text-white font-light text-[26px] sm:text-[32px] md:text-[38px] lg:text-[48px] tracking-tight mb-4 leading-tight drop-shadow-lg">
+            <h2 className="text-white font-light text-[22px] sm:text-[26px] md:text-[38px] lg:text-[48px] tracking-tight mb-3 sm:mb-4 leading-tight drop-shadow-lg">
               {subtitle}
             </h2>
             
-            <p className="text-neutral-300 text-sm sm:text-base md:text-[18px] font-light drop-shadow-md mb-6">
+            <p className="text-neutral-300 text-xs sm:text-sm md:text-[18px] font-light drop-shadow-md mb-4 sm:mb-6 leading-relaxed">
               {description}
             </p>
 
-            <button className="bg-[#CBA135] hover:bg-[#D4AF37] text-[#0A0A0A] font-medium uppercase tracking-wider text-xs md:text-sm px-6 py-3 rounded transition-colors duration-300 shadow-lg pointer-events-auto">
+            <button className="bg-[#CBA135] hover:bg-[#D4AF37] text-[#0A0A0A] font-medium uppercase tracking-wider text-[10px] sm:text-xs md:text-sm px-4 py-2 sm:px-6 sm:py-3 rounded transition-colors duration-300 shadow-lg pointer-events-auto">
               BOOK AN APPOINTMENT
             </button>
             

@@ -65,35 +65,43 @@ export function VideoSection3({
         if (ctx) {
           const parent = canvasRef.current.parentElement;
           if (parent) {
-            canvasRef.current.width = parent.clientWidth;
-            canvasRef.current.height = parent.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            canvasRef.current.width = parent.clientWidth * dpr;
+            canvasRef.current.height = parent.clientHeight * dpr;
           }
-          drawCover(ctx, canvasRef.current, firstImg);
+          drawCover(ctx, canvasRef.current, firstImg, 0.5, 0.5);
         }
       }
 
-      // Load remaining frames in chunks to prevent blocking
-      const chunkSize = 15;
-      for (let i = 1; i < totalFrames; i += chunkSize) {
+      // Check if mobile to implement frame sampling
+      const isMobile = window.innerWidth < 768;
+      const frameSkip = isMobile ? 3 : 1;
+      
+      // Load remaining frames in chunks
+      const chunkSize = isMobile ? 5 : 15;
+      for (let i = frameSkip; i < totalFrames; i += (chunkSize * frameSkip)) {
         if (!isComponentMounted.current) break;
         
         const chunk = [];
-        for (let j = i; j < Math.min(i + chunkSize, totalFrames); j++) {
+        for (let j = 0; j < chunkSize; j++) {
+          const frameIndex = i + (j * frameSkip);
+          if (frameIndex >= totalFrames) break;
+          
           chunk.push(
             new Promise<void>((resolve) => {
               const img = new window.Image();
-              img.src = getFramePath(j);
+              img.src = getFramePath(frameIndex);
               img.onload = () => {
                 if (isComponentMounted.current) {
-                  imagesRef.current[j] = img;
+                  imagesRef.current[frameIndex] = img;
                 }
                 resolve();
               };
               img.onerror = () => {
                 if (isComponentMounted.current) {
-                  console.warn(`VideoSection3: Failed to load frame ${j}`);
+                  console.warn(`VideoSection3: Failed to load frame ${frameIndex}`);
                 }
-                resolve(); // Retain animation by allowing to proceed
+                resolve();
               };
             })
           );
@@ -113,7 +121,7 @@ export function VideoSection3({
   }, [totalFrames]);
 
   // Helper to draw image using object-fit: cover logic
-  const drawCover = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, img: HTMLImageElement) => {
+  const drawCover = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, img: HTMLImageElement, focusX = 0.5, focusY = 0.5) => {
     if (!img.width || !img.height) return;
     
     const imgRatio = img.width / img.height;
@@ -125,11 +133,11 @@ export function VideoSection3({
       drawWidth = canvas.width;
       drawHeight = canvas.width / imgRatio;
       offsetX = 0;
-      offsetY = (canvas.height - drawHeight) / 2;
+      offsetY = (canvas.height - drawHeight) * focusY;
     } else {
       drawHeight = canvas.height;
       drawWidth = canvas.height * imgRatio;
-      offsetX = (canvas.width - drawWidth) / 2;
+      offsetX = (canvas.width - drawWidth) * focusX;
       offsetY = 0;
     }
 
@@ -158,13 +166,17 @@ export function VideoSection3({
       const parent = canvas.parentElement;
       
       if (parent && ctx) {
+        const dpr = window.devicePixelRatio || 1;
+        const targetWidth = parent.clientWidth * dpr;
+        const targetHeight = parent.clientHeight * dpr;
+        
         // Ensure canvas dimensions match container dynamically
-        if (canvas.width !== parent.clientWidth || canvas.height !== parent.clientHeight) {
-          canvas.width = parent.clientWidth;
-          canvas.height = parent.clientHeight;
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
         }
         
-        drawCover(ctx, canvas, validImg);
+        drawCover(ctx, canvas, validImg, 0.5, 0.5);
       }
     }
   }, []);
@@ -278,10 +290,10 @@ export function VideoSection3({
         <div className="absolute right-0 bottom-0 w-full md:w-1/3 h-1/3 bg-gradient-to-tl from-[#0A0A0A]/70 to-transparent z-10 pointer-events-none" />
 
         {/* Minimal Overlay Content - Lower Right Corner */}
-        <div className="absolute inset-0 z-20 flex flex-col justify-end items-end p-6 pb-[10%] md:pr-[8%] md:pb-[10%] pointer-events-none">
+        <div className="absolute inset-0 z-20 flex flex-col justify-end items-end p-4 pb-20 sm:p-6 sm:pb-[10%] md:pr-[8%] md:pb-[10%] pointer-events-none">
           <div className="flex flex-col items-end pointer-events-auto">
             
-            <p className="text-[#CBA135] font-semibold tracking-[0.2em] text-[10px] md:text-xs mb-3 uppercase drop-shadow-md text-right">
+            <p className="text-[#CBA135] font-semibold tracking-[0.2em] text-[10px] md:text-xs mb-2 sm:mb-3 uppercase drop-shadow-md text-right">
               {title}
             </p>
             
@@ -289,7 +301,7 @@ export function VideoSection3({
               href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address.replace(/\n/g, ' '))}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-[#CBA135] hover:bg-[#D4AF37] text-[#0A0A0A] font-semibold uppercase tracking-widest text-[10px] md:text-xs px-6 py-3 rounded-sm transition-colors duration-300 shadow-xl"
+              className="bg-[#CBA135] hover:bg-[#D4AF37] text-[#0A0A0A] font-semibold uppercase tracking-widest text-[10px] md:text-xs px-4 py-2 sm:px-6 sm:py-3 rounded-sm transition-colors duration-300 shadow-xl"
             >
               GET DIRECTIONS
             </a>

@@ -61,27 +61,35 @@ export function VideoSection1({
         if (ctx) {
           const parent = canvasRef.current.parentElement;
           if (parent) {
-            canvasRef.current.width = parent.clientWidth;
-            canvasRef.current.height = parent.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            canvasRef.current.width = parent.clientWidth * dpr;
+            canvasRef.current.height = parent.clientHeight * dpr;
           }
-          drawCover(ctx, canvasRef.current, firstImg);
+          drawCover(ctx, canvasRef.current, firstImg, 0.5, 0.5);
         }
       }
 
+      // Check if mobile to implement frame sampling to save memory/bandwidth
+      const isMobile = window.innerWidth < 768;
+      const frameSkip = isMobile ? 3 : 1; // On mobile, load every 3rd frame (50 frames instead of 150)
+      
       // Load remaining frames in chunks to prevent blocking
-      const chunkSize = 15;
-      for (let i = 1; i < totalFrames; i += chunkSize) {
+      const chunkSize = isMobile ? 5 : 15;
+      for (let i = frameSkip; i < totalFrames; i += (chunkSize * frameSkip)) {
         if (!isComponentMounted.current) break;
         
         const chunk = [];
-        for (let j = i; j < Math.min(i + chunkSize, totalFrames); j++) {
+        for (let j = 0; j < chunkSize; j++) {
+          const frameIndex = i + (j * frameSkip);
+          if (frameIndex >= totalFrames) break;
+          
           chunk.push(
             new Promise<void>((resolve) => {
               const img = new window.Image();
-              img.src = getFramePath(j);
+              img.src = getFramePath(frameIndex);
               img.onload = () => {
                 if (isComponentMounted.current) {
-                  imagesRef.current[j] = img;
+                  imagesRef.current[frameIndex] = img;
                 }
                 resolve();
               };
@@ -104,7 +112,7 @@ export function VideoSection1({
   }, [totalFrames]);
 
   // Helper to draw image using object-fit: cover logic
-  const drawCover = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, img: HTMLImageElement) => {
+  const drawCover = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, img: HTMLImageElement, focusX = 0.5, focusY = 0.5) => {
     if (!img.width || !img.height) return;
     
     const imgRatio = img.width / img.height;
@@ -116,11 +124,11 @@ export function VideoSection1({
       drawWidth = canvas.width;
       drawHeight = canvas.width / imgRatio;
       offsetX = 0;
-      offsetY = (canvas.height - drawHeight) / 2;
+      offsetY = (canvas.height - drawHeight) * focusY;
     } else {
       drawHeight = canvas.height;
       drawWidth = canvas.height * imgRatio;
-      offsetX = (canvas.width - drawWidth) / 2;
+      offsetX = (canvas.width - drawWidth) * focusX;
       offsetY = 0;
     }
 
@@ -132,20 +140,34 @@ export function VideoSection1({
   const renderFrame = useCallback((frameIndex: number) => {
     if (!isIntersecting.current) return;
     
-    if (imagesRef.current[frameIndex] && canvasRef.current) {
+    // Fallback to nearest loaded frame if skipping
+    let validImg = imagesRef.current[frameIndex];
+    if (!validImg) {
+      for (let i = frameIndex - 1; i >= 0; i--) {
+        if (imagesRef.current[i]) {
+          validImg = imagesRef.current[i];
+          break;
+        }
+      }
+    }
+    
+    if (validImg && canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
-      const img = imagesRef.current[frameIndex]!;
       const canvas = canvasRef.current;
       const parent = canvas.parentElement;
       
       if (parent && ctx) {
-        // Ensure canvas dimensions match container
-        if (canvas.width !== parent.clientWidth || canvas.height !== parent.clientHeight) {
-          canvas.width = parent.clientWidth;
-          canvas.height = parent.clientHeight;
+        const dpr = window.devicePixelRatio || 1;
+        const targetWidth = parent.clientWidth * dpr;
+        const targetHeight = parent.clientHeight * dpr;
+
+        // Ensure canvas dimensions match container physical pixels
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
         }
         
-        drawCover(ctx, canvas, img);
+        drawCover(ctx, canvas, validImg, 0.5, 0.5);
       }
     }
   }, []);
@@ -263,18 +285,18 @@ export function VideoSection1({
         <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-[#1a1a1a] via-[#1a1a1a]/50 to-transparent z-10 pointer-events-none" />
 
         {/* Content Overlay */}
-        <div className="absolute inset-0 z-20 flex flex-col justify-end px-6 pb-24 md:px-12 md:pb-32 lg:px-24 pointer-events-none">
-          <div className="max-w-4xl mx-auto w-full text-center flex flex-col items-center">
+        <div className="absolute inset-0 z-20 flex flex-col justify-end px-4 pb-20 sm:px-6 sm:pb-24 md:px-12 md:pb-32 lg:px-24 pointer-events-none">
+          <div className="max-w-[100%] sm:max-w-4xl mx-auto w-full text-center flex flex-col items-center">
             
-            <p className="text-[#CBA135] font-semibold tracking-[0.25em] text-sm md:text-base mb-4 uppercase drop-shadow-md">
+            <p className="text-[#CBA135] font-semibold tracking-[0.25em] text-[10px] sm:text-[12px] md:text-base mb-3 sm:mb-4 uppercase drop-shadow-md">
               Golden Dental Clinic
             </p>
             
-            <h2 className="text-white font-light text-4xl md:text-5xl lg:text-7xl tracking-tight mb-6 leading-tight drop-shadow-lg">
+            <h2 className="text-white font-light text-[28px] sm:text-[34px] md:text-5xl lg:text-7xl tracking-tight mb-4 sm:mb-6 leading-[1.1] sm:leading-tight drop-shadow-lg px-2">
               {title}
             </h2>
             
-            <p className="text-neutral-300 text-lg md:text-xl font-light max-w-2xl drop-shadow-md">
+            <p className="text-neutral-300 text-[14px] sm:text-[16px] md:text-xl font-light max-w-2xl drop-shadow-md px-4">
               {description}
             </p>
             
@@ -283,8 +305,8 @@ export function VideoSection1({
 
         {/* Scroll Indicator */}
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 flex flex-col items-center opacity-80 animate-pulse">
-          <span className="text-[#CBA135] text-xs tracking-widest mb-3 font-medium">SCROLL TO EXPLORE</span>
-          <div className="w-[1px] h-12 bg-gradient-to-b from-[#CBA135] to-transparent" />
+          <span className="text-[#CBA135] text-[10px] sm:text-[12px] tracking-widest mb-3 font-medium">SCROLL TO EXPLORE</span>
+          <div className="w-[1px] h-8 sm:h-12 bg-gradient-to-b from-[#CBA135] to-transparent" />
         </div>
         
       </div>
