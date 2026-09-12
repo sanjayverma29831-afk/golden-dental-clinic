@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
 const navLinks = [
   { name: "Home", href: "#home" },
   { name: "About", href: "#about" },
-  { name: "Services", href: "#services" },
+  { name: "Treatments", href: "#services" },
   { name: "Doctor", href: "#doctor" },
   { name: "Contact", href: "#contact" },
 ];
@@ -25,7 +25,6 @@ export function Navigation() {
       }
 
       const sections = navLinks.map(link => link.href.substring(1));
-      sections.push("exterior"); 
       
       let current = "home";
 
